@@ -46,7 +46,7 @@
         .attr('height', size.height);
     const context = canvas.node().getContext("2d");     // please note the variable canvas is a d3 selection, but we need the DOM node to get the context
 
-    d3.csv('iris.csv')
+    d3.csv('./iris.csv')
         .then(data => {
             // declare necessary scales, such as dimension scale, value scale, and color scale.
             
