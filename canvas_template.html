@@ -12,6 +12,17 @@
         #axisLayer {
             position: absolute;
         }
+
+        /* Ensure canvas is behind the SVG */
+        #linesLayer {
+            position: absolute;
+            z-index: 1;
+        }
+
+        #axisLayer {
+            position: absolute;
+            z-index: 2;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 </head>
@@ -64,7 +75,7 @@
         height: 600,
         margin: 50
     }
-    let select = '';
+    let selectedSpecies = ''; // used to filter the lines
 
     // margin: auto in CSS is used to put the root div in the center
     const root = d3.select('body').append('div')
@@ -72,120 +83,170 @@
         .style('width', `${size.width}px`)
         .style('height', `${size.height}px`);
 
-    // position: absolute in CSS is used to overlap the svg on top of the canvas
+    // FIRST: add the canvas (to be drawn behind)
+    const canvas = root.append('canvas')
+        .attr('id', 'linesLayer')
+        .attr('width', size.width)
+        .attr('height', size.height);
+    const context = canvas.node().getContext("2d");
+
+    // SECOND: add the SVG (overlays canvas for axes and legend)
     const svg = root.append('svg')
         .attr('id', 'axisLayer')
         .attr('width', size.width)
         .attr('height', size.height);
 
-    // the canvas has the same size as the svg, they are both positioned in the same place, so we can draw on the canvas and overlay the axes on top of it
-    const canvas = root.append('canvas')
-        .attr('id', 'linesLayer')
-        .attr('width', size.width)
-        .attr('height', size.height);
-    const context = canvas.node().getContext("2d");     // please note the variable canvas is a d3 selection, but we need the DOM node to get the context
+    // Create a group for axes with a margin offset
+    const mainGroup = svg.append("g")
+        .attr("transform", `translate(${size.margin}, ${size.margin})`);
 
-    d3.csv('./iris.csv')
-        .then(data => {
-            // declare necessary scales, such as dimension scale, value scale, and color scale.
-            yScales["sepal.length"] = d3.scaleLinear()
-                .domain([4, 8])
-                .range([height, 0]);
+    // Add legend group (positioned in top-right; adjust as needed)
+    const legendGroup = svg.append("g")
+        .attr("transform", `translate(${width + size.margin}, ${size.margin})`);
 
-            yScales["sepal.width"] = d3.scaleLinear()
-                .domain([2, 4.5])
-                .range([height, 0]);
+    // Draw axes after CSV is loaded; renderLines() draws on canvas
+    d3.csv('./iris.csv').then(data => {
+        // Create y-scales (domains manually set)
+        yScales["sepal.length"] = d3.scaleLinear().domain([4, 8]).range([height, 0]);
+        yScales["sepal.width"] = d3.scaleLinear().domain([2, 4.5]).range([height, 0]);
+        yScales["petal.length"] = d3.scaleLinear().domain([1, 7]).range([height, 0]);
+        yScales["petal.width"] = d3.scaleLinear().domain([0, 2.5]).range([height, 0]);
 
-            yScales["petal.length"] = d3.scaleLinear()
-                .domain([1, 7])
-                .range([height, 0]);
+        // Draw x-axis
+        const xAxis = d3.axisBottom(xScale)
+            .tickValues(dimensions);
+        mainGroup.append("g")
+            .attr("class", "x-axis")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis);
 
-            yScales["petal.width"] = d3.scaleLinear()
-                .domain([0, 2.5])
-                .range([height, 0]);
-            // add x-axis and four y-axes to the svg
-            // x-axis
-            const xAxis = d3.axisBottom(xScale)
-                .tickValues(dimensions);  // Manually set tick values to match dimensions
+        // Draw one y-axis per dimension
+        dimensions.forEach(dim => {
+            let tickValues;
+            if (dim === "sepal.length") tickValues = [5, 6, 7];
+            else if (dim === "sepal.width") tickValues = [2.0, 3.0, 4.0];
+            else if (dim === "petal.length") tickValues = [1, 2, 3, 4, 5, 6];
+            else if (dim === "petal.width") tickValues = [1, 2];
 
-            const g = mainGroup.append("g")
-                .attr("class", "x-axis")
-                .attr("transform", `translate(0, ${height})`)
-                .call(xAxis)
-                .selectAll("text")
-                .style("text-anchor", "end" + 10);
+            const yAxis = d3.axisLeft(yScales[dim])
+                .tickValues(tickValues)
+                .tickFormat(d3.format(".1f"));
+            mainGroup.append("g")
+                .attr("class", `y-axis y-axis-${dim}`)
+                .attr("transform", `translate(${xScale(dim)},0)`)
+                .call(yAxis);
+        });
 
-            // y-axis
-            dimensions.forEach(dim => {
-                let tickValues;
-
-                // Manually define tick values for each axis to match 
-                if (dim === "sepal.length") {
-                    tickValues = [5, 6, 7];
-                } else if (dim === "sepal.width") {
-                    tickValues = [2.0, 3.0, 4.0];
-                } else if (dim === "petal.length") {
-                    tickValues = [1, 2, 3, 4, 5, 6];
-                } else if (dim === "petal.width") {
-                    tickValues = [1, 2];
-                }
-
-                const yAxis = d3.axisLeft(yScales[dim])
-                    .tickValues(tickValues)  // Set tick values manually
-                    .tickFormat(d3.format(".1f"));  // Format numbers properly
-
-                const g = mainGroup.append("g")
-                    .attr("class", `y-axis y-axis-${dim}`)
-                    .attr("transform", `translate(${xScale(dim)}, 0)`)
-                    .call(yAxis);
-            });
-
-            // add color legend for variety to svg, define the click event to filter the selection
-            const legendGroup = svg.append("g")
-                .attr("transform", `translate(${width + 100}, 50)`);  // Adjust for top right placement
-
-            const legendData = colorScale.domain();
-            legendData.forEach((species, i) => {
-                const legendItem = legendGroup.append("g")
-                    .attr("transform", `translate(0, ${i * 25})`);
-
-                // Color box
-                legendItem.append("rect")
-                    .attr("x", 50)
-                    .attr("y", 0)
-                    .attr("width", 40)
-                    .attr("height", 20)
-                    .attr("fill", colorScale(species));
-
-                // Text label
-                legendItem.append("text")
-                    .attr("x", -15)
-                    .attr("y", 14)
-                    .attr("font-size", "14px")
-                    .attr("fill", "black")
-                    .text(species);
-            });
-            // define a function to render the lines according to the selected variety
-            // draw the lines on the canvas
-
-            function renderLines() {
-                context.clearRect(0, 0, width, height);
-
-                data.forEach(d => {
-                    context.beginPath();
-                    context.moveTo(xScale(dimensions[0]), yScales[dimensions[0]](d[dimensions[0]]));
-
-                    dimensions.forEach((dim, i) => {
-                        if (i > 0) {
-                            context.lineTo(xScale(dim), yScales[dim](d[dim]));
-                        }
-                    });
-
-                    context.strokeStyle = colorScale(d.variety);
-                    context.stroke();
+        // Build the color legend with interactivity
+        const legendData = colorScale.domain();
+        legendData.forEach((species, i) => {
+            const legendItem = legendGroup.append("g")
+                .attr("transform", `translate(0, ${i * 25})`);
+            legendItem.append("rect")
+                .attr("x", 50)
+                .attr("y", 0)
+                .attr("width", 40)
+                .attr("height", 20)
+                .attr("fill", colorScale(species))
+                .style("cursor", "pointer")
+                .on("click", function () {
+                    // toggle selection: if already selected, clear selection
+                    selectedSpecies = (selectedSpecies === species) ? '' : species;
+                    renderLines();
+                    // update legend opacity: highlight selected legend item
+                    legendGroup.selectAll("rect")
+                        .attr("opacity", d => (selectedSpecies === "") ? 1 : (d === selectedSpecies ? 1 : 0.2));
                 });
+            legendItem.append("text")
+                .attr("x", -15)
+                .attr("y", 14)
+                .attr("font-size", "14px")
+                .attr("fill", "black")
+                .text(species);
+        });
+
+        // Helper function: distance from point (px,py) to segment (ax,ay)-(bx,by)
+        function pointToSegmentDistance(ax, ay, bx, by, px, py) {
+            const dx = bx - ax, dy = by - ay;
+            if(dx === 0 && dy === 0) return Math.hypot(px - ax, py - ay);
+            let t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
+            t = Math.max(0, Math.min(1, t));
+            const projX = ax + t * dx, projY = ay + t * dy;
+            return Math.hypot(px - projX, py - projY);
+        }
+
+        // Function to draw parallel coordinate lines on canvas
+        function renderLines() {
+            // Clear canvas in chart area (offset by margins if needed)
+            context.clearRect(0, 0, size.width, size.height);
+            // Optionally translate context by margin if you want to align exactly with axes
+            context.save();
+            context.translate(size.margin, size.margin);
+            data.forEach(d => {
+                // convert variety to lower case to match legend key if necessary
+                const dSpecies = d.variety.toLowerCase();
+                // If a species is selected and current line does not match, set alpha to 0 (invisible)
+                if (selectedSpecies && dSpecies !== selectedSpecies) {
+                    context.globalAlpha = 0;
+                } else {
+                    context.globalAlpha = 1;
+                }
+                context.beginPath();
+                // moveTo for first dimension
+                context.moveTo(xScale(dimensions[0]), yScales[dimensions[0]](d[dimensions[0]]));
+                // lineTo for each subsequent dimension
+                dimensions.slice(1).forEach(dim => {
+                    context.lineTo(xScale(dim), yScales[dim](d[dim]));
+                });
+                context.strokeStyle = colorScale(dSpecies);
+                context.lineWidth = 1.75;
+                context.stroke();
+            });
+            context.restore();
+        }
+        // Initial render of the lines
+        renderLines();
+
+        // Add tooltip interactivity on canvas
+        canvas.node().addEventListener("mousemove", function(event) {
+            const rect = canvas.node().getBoundingClientRect();
+            // Compute mouse position relative to the inner drawing area
+            const mx = event.clientX - rect.left - size.margin;
+            const my = event.clientY - rect.top - size.margin;
+            let foundDatum = null, minDist = Infinity;
+            data.forEach(d => {
+                const pts = dimensions.map(dim => [xScale(dim), yScales[dim](d[dim])]);
+                for(let i = 0; i < pts.length - 1; i++){
+                    const dist = pointToSegmentDistance(pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1], mx, my);
+                    if(dist < minDist){
+                        minDist = dist;
+                        if(dist < 5) foundDatum = d;
+                    }
+                }
+            });
+            if(foundDatum){
+                tooltip
+                    .html(
+                        `${foundDatum.variety} - ` +
+                        `sepal.length: ${foundDatum["sepal.length"]} - ` +
+                        `sepal.width: ${foundDatum["sepal.width"]} - ` +
+                        `petal.length: ${foundDatum["petal.length"]} - ` +
+                        `petal.width: ${foundDatum["petal.width"]}`
+                    )
+                    .style("opacity", 1)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY + 10) + "px");
+            } else {
+                tooltip.style("opacity", 0);
             }
-        })
+        });
+        canvas.node().addEventListener("mouseout", function() {
+            tooltip.style("opacity", 0);
+        });
+    })
+        .catch(error => {
+            console.error("Error loading CSV:", error);
+        });
 </script>
 
 </html>
