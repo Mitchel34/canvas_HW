@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Scatterplot with D3 and Canvas</title>
+    <style>
+        #root {
+            margin: auto;
+        }
+
+        #axisLayer {
+            position: absolute;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+</head>
+
+<body>
+</body>
+
+<script>
+    const size = {
+        width: 1000,
+        height: 600,
+        margin: 50
+    }
+    let select = '';
+
+    // margin: auto in CSS is used to put the root div in the center
+    const root = d3.select('body').append('div')
+        .attr('id', 'root')
+        .style('width', `${size.width}px`)
+        .style('height', `${size.height}px`);
+
+    // position: absolute in CSS is used to overlap the svg on top of the canvas
+    const svg = root.append('svg')
+        .attr('id', 'axisLayer')
+        .attr('width', size.width)
+        .attr('height', size.height);
+
+    // the canvas has the same size as the svg, they are both positioned in the same place, so we can draw on the canvas and overlay the axes on top of it
+    const canvas = root.append('canvas')
+        .attr('id', 'linesLayer')
+        .attr('width', size.width)
+        .attr('height', size.height);
+    const context = canvas.node().getContext("2d");     // please note the variable canvas is a d3 selection, but we need the DOM node to get the context
+
+    d3.csv('iris.csv')
+        .then(data => {
+            // declare necessary scales, such as dimension scale, value scale, and color scale.
+            
+            // add x-axis and four y-axes to the svg
+
+            // add color legend for variety to svg, define the click event to filter the selection
+
+            // define a function to render the lines according to the selected variety
+        })
+</script>
+
+</html>
